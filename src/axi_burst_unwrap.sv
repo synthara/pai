@@ -63,6 +63,37 @@ module axi_burst_unwrap #(
   // Demultiplex between supported and unsupported transactions.
   axi_req_t   act_req,  unsupported_req;
   axi_resp_t  act_resp, unsupported_resp;
+  // Add one cut register to meet timing target
+  axi_req_t   act_req_cut;
+  axi_resp_t  act_resp_cut;
+
+  // assign act_req_cut = act_req;
+  // assign act_resp = act_resp_cut;
+
+  // axi fifo to close timing
+  axi_cut #(
+    .Bypass       ( 0 ),
+  // AXI channel structs
+    .aw_chan_t    ( aw_chan_t ),
+    .w_chan_t     ( w_chan_t  ),
+    .b_chan_t     ( b_chan_t  ),
+    .ar_chan_t    ( ar_chan_t ),
+    .r_chan_t     ( r_chan_t  ),
+  // AXI request & response structs
+    .axi_req_t    ( axi_req_t ),
+    .axi_resp_t   ( axi_resp_t)
+  ) i_timing_axi_cut (
+    .clk_i,  // Clock
+    .rst_ni,  // Asynchronous reset active low
+    // slave port
+    .slv_req_i    (act_req  ),
+    .slv_resp_o   (act_resp ),
+    // master port
+    .mst_req_o    (act_req_cut ),
+    .mst_resp_i   (act_resp_cut)
+  );
+
+
   logic sel_aw_unsupported, sel_ar_unsupported;
   localparam int unsigned MaxTxns = (MaxReadTxns > MaxWriteTxns) ? MaxReadTxns : MaxWriteTxns;
   axi_demux #(
@@ -143,9 +174,9 @@ module axi_burst_unwrap #(
   ) i_axi_burst_unwrap_aw_chan (
     .clk_i,
     .rst_ni,
-    .ax_i           ( act_req.aw                         ),
-    .ax_valid_i     ( act_req.aw_valid                   ),
-    .ax_ready_o     ( act_resp.aw_ready                  ),
+    .ax_i           ( act_req_cut.aw                         ),
+    .ax_valid_i     ( act_req_cut.aw_valid                   ),
+    .ax_ready_o     ( act_resp_cut.aw_ready                  ),
     .ax_o           ( mst_req_o.aw                       ),
     .ax_valid_o     ( mst_req_o.aw_valid                 ),
     .ax_ready_i     ( mst_resp_i.aw_ready                ),
@@ -170,43 +201,43 @@ module axi_burst_unwrap #(
     w_last_d          = w_last_q;
     w_state_d         = w_state_q;
     mst_req_o.w_valid = 1'b0;
-    mst_req_o.w       = act_req.w;
-    act_resp.w_ready  = 1'b0;
+    mst_req_o.w       = act_req_cut.w;
+    act_resp_cut.w_ready  = 1'b0;
 
     unique case (w_state_q)
       WReady: begin
-        if (act_req.w_valid) begin
+        if (act_req_cut.w_valid) begin
           w_cnt_req = 1'b1;
           if (w_cnt_gnt) begin
-            w_last_d = act_req.w.last | (w_cnt_len == 8'd0);
+            w_last_d = act_req_cut.w.last | (w_cnt_len == 8'd0);
             mst_req_o.w.last  = w_last_d;
             w_cnt_dec         = 1'b1;
             // Try to forward the beat downstream.
             mst_req_o.w_valid = 1'b1;
             if (mst_resp_i.w_ready) begin
-              act_resp.w_ready = 1'b1;
-              if (w_last_d && !act_req.w.last) begin
+              act_resp_cut.w_ready = 1'b1;
+              if (w_last_d && !act_req_cut.w.last) begin
                 w_state_d = WFeedthrough;
               end
             end else begin
               w_state_d = WWait;
             end
           end // if (w_cnt_gnt)
-        end // if (act_req.w_valid)
+        end // if (act_req_cut.w_valid)
       end // case: WReady
       WWait: begin
         mst_req_o.w.last  = w_last_q;
         mst_req_o.w_valid = 1'b1;
         if (mst_resp_i.w_ready) begin
-          act_resp.w_ready = 1'b1;
-          w_state_d        = (!w_last_q || act_req.w.last) ? WReady : WFeedthrough;
+          act_resp_cut.w_ready = 1'b1;
+          w_state_d        = (!w_last_q || act_req_cut.w.last) ? WReady : WFeedthrough;
         end
       end
       WFeedthrough: begin
         // Feed through second incremental burst.
-        mst_req_o.w_valid = act_req.w_valid;
-        act_resp.w_ready  = mst_resp_i.w_ready;
-        if (act_req.w_valid && mst_resp_i.w_ready && act_req.w.last) begin
+        mst_req_o.w_valid = act_req_cut.w_valid;
+        act_resp_cut.w_ready  = mst_resp_i.w_ready;
+        if (act_req_cut.w_valid && mst_resp_i.w_ready && act_req_cut.w.last) begin
           w_state_d = WReady;
         end
       end
@@ -222,8 +253,8 @@ module axi_burst_unwrap #(
   logic b_err_d, b_err_q;
   always_comb begin
     mst_req_o.b_ready = 1'b0;
-    act_resp.b        = '0;
-    act_resp.b_valid  = 1'b0;
+    act_resp_cut.b        = '0;
+    act_resp_cut.b_valid  = 1'b0;
     b_cnt_dec         = 1'b0;
     b_cnt_req         = 1'b0;
     b_err_d           = b_err_q;
@@ -235,13 +266,13 @@ module axi_burst_unwrap #(
           b_cnt_req = 1'b1;
           if (b_cnt_gnt) begin
             if (b_cnt_len == 8'd0) begin
-              act_resp.b = mst_resp_i.b;
+              act_resp_cut.b = mst_resp_i.b;
               if (b_cnt_err) begin
-                act_resp.b.resp = axi_pkg::RESP_SLVERR;
+                act_resp_cut.b.resp = axi_pkg::RESP_SLVERR;
               end
-              act_resp.b_valid  = 1'b1;
+              act_resp_cut.b_valid  = 1'b1;
               b_cnt_dec         = 1'b1;
-              if (act_req.b_ready) begin
+              if (act_req_cut.b_ready) begin
                 mst_req_o.b_ready = 1'b1;
               end else begin
                 b_state_d = BWait;
@@ -255,12 +286,12 @@ module axi_burst_unwrap #(
         end
       end
       BWait: begin
-        act_resp.b = mst_resp_i.b;
+        act_resp_cut.b = mst_resp_i.b;
         if (b_err_q) begin
-          act_resp.b.resp = axi_pkg::RESP_SLVERR;
+          act_resp_cut.b.resp = axi_pkg::RESP_SLVERR;
         end
-        act_resp.b_valid  = 1'b1;
-        if (mst_resp_i.b_valid && act_req.b_ready) begin
+        act_resp_cut.b_valid  = 1'b1;
+        if (mst_resp_i.b_valid && act_req_cut.b_ready) begin
           mst_req_o.b_ready = 1'b1;
           b_state_d         = BReady;
         end
@@ -284,9 +315,9 @@ module axi_burst_unwrap #(
   ) i_axi_burst_unwrap_ar_chan (
     .clk_i,
     .rst_ni,
-    .ax_i           ( act_req.ar               ),
-    .ax_valid_i     ( act_req.ar_valid         ),
-    .ax_ready_o     ( act_resp.ar_ready        ),
+    .ax_i           ( act_req_cut.ar               ),
+    .ax_valid_i     ( act_req_cut.ar_valid         ),
+    .ax_ready_o     ( act_resp_cut.ar_ready        ),
     .ax_o           ( mst_req_o.ar             ),
     .ax_valid_o     ( mst_req_o.ar_valid       ),
     .ax_ready_i     ( mst_resp_i.ar_ready      ),
@@ -311,9 +342,9 @@ module axi_burst_unwrap #(
     r_last_d          = r_last_q;
     r_state_d         = r_state_q;
     mst_req_o.r_ready = 1'b0;
-    act_resp.r        = mst_resp_i.r;
-    act_resp.r.last   = 1'b0;
-    act_resp.r_valid  = 1'b0;
+    act_resp_cut.r        = mst_resp_i.r;
+    act_resp_cut.r.last   = 1'b0;
+    act_resp_cut.r_valid  = 1'b0;
 
     unique case (r_state_q)
       RFeedthrough: begin
@@ -323,12 +354,12 @@ module axi_burst_unwrap #(
           r_cnt_req = 1'b1;
           if (r_cnt_gnt) begin
             r_last_d = (r_cnt_len == 8'd0);
-            act_resp.r.last   = r_last_d;
+            act_resp_cut.r.last   = r_last_d;
             // Decrement the counter.
             r_cnt_dec         = 1'b1;
             // Try to forward the beat upstream.
-            act_resp.r_valid  = 1'b1;
-            if (act_req.r_ready) begin
+            act_resp_cut.r_valid  = 1'b1;
+            if (act_req_cut.r_ready) begin
               // Acknowledge downstream.
               mst_req_o.r_ready = 1'b1;
             end else begin
@@ -339,9 +370,9 @@ module axi_burst_unwrap #(
         end
       end
       RWait: begin
-        act_resp.r.last   = r_last_q;
-        act_resp.r_valid  = mst_resp_i.r_valid;
-        if (mst_resp_i.r_valid && act_req.r_ready) begin
+        act_resp_cut.r.last   = r_last_q;
+        act_resp_cut.r_valid  = mst_resp_i.r_valid;
+        if (mst_resp_i.r_valid && act_req_cut.r_ready) begin
           mst_req_o.r_ready = 1'b1;
           r_state_d         = RFeedthrough;
         end
@@ -468,7 +499,7 @@ module axi_burst_unwrap_ax_chan #(
   logic [AddrWidth-1:0] wrap_boundary;
 
   // The total size of this burst (beat_size * burst_length)
-  assign container_size = ax_i.len << ax_i.size;
+  assign container_size   = (ax_i.len + 1) << ax_i.size;
   // For wrapping bursts, this returns the wrap boundary (container size is power of two according to A.3.4.1)
   assign wrap_boundary = ax_i.addr & ~(AddrWidth'(container_size) - 1);
 
@@ -494,9 +525,10 @@ module axi_burst_unwrap_ax_chan #(
             // Try to feed first burst through.
             ax_o       = ax_d;
             // First (this) incr burst from addr to wrap boundary + container size
-            ax_o.len   = (wrap_boundary + container_size - ax_i.addr) >> ax_i.size;
+            ax_o.len   = ((wrap_boundary + container_size - ax_i.addr) >> ax_i.size) - 1;
             // Next incr burst from wrap boundary to addr
-            ax_d.len   = (ax_i.addr - wrap_boundary) >> ax_i.size;
+            ax_d.len   = ((ax_i.addr - wrap_boundary) >> ax_i.size) - 1;
+            ax_d.addr  = wrap_boundary;
             ax_valid_o = 1'b1;
             if (ax_ready_i) begin
               ax_ready_o = 1'b1;
