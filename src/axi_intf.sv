@@ -18,10 +18,10 @@
 
 /// An AXI4 interface.
 interface AXI_BUS #(
-  parameter int unsigned AXI_ADDR_WIDTH = 0,
-  parameter int unsigned AXI_DATA_WIDTH = 0,
-  parameter int unsigned AXI_ID_WIDTH   = 0,
-  parameter int unsigned AXI_USER_WIDTH = 0
+  parameter int unsigned AXI_ADDR_WIDTH = 32,
+  parameter int unsigned AXI_DATA_WIDTH = 32,
+  parameter int unsigned AXI_ID_WIDTH   = 32,
+  parameter int unsigned AXI_USER_WIDTH = 32
 );
 
   localparam int unsigned AXI_STRB_WIDTH = AXI_DATA_WIDTH / 8;
@@ -398,8 +398,8 @@ endinterface
 
 /// An AXI4-Lite interface.
 interface AXI_LITE #(
-  parameter int unsigned AXI_ADDR_WIDTH = 0,
-  parameter int unsigned AXI_DATA_WIDTH = 0
+  parameter int unsigned AXI_ADDR_WIDTH = 32,
+  parameter int unsigned AXI_DATA_WIDTH = 32
 );
 
   localparam int unsigned AXI_STRB_WIDTH = AXI_DATA_WIDTH / 8;
