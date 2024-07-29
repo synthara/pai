@@ -26,7 +26,7 @@ pai_base = {
         "src/axi_xbar.sv",
     ],
 
-    "rtl_incdirs": ["include/"],
+    "rtl_incdirs": ["include", "src"],
 
     "rtl_dependencies": [],
 
