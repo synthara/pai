@@ -1,11 +1,7 @@
 pai_base = {
     "config_name": "pai_base",
 
-    "rtl_files": [],
-
-    "rtl_incdirs": ["include/"],
-
-    "rtl_dependencies": [
+    "rtl_files": [
         "src/axi_pkg.sv",
         "include/axi/assign.svh",
         "include/axi/port.svh",
@@ -29,6 +25,10 @@ pai_base = {
         "src/axi_lite_xbar.sv",
         "src/axi_xbar.sv",
     ],
+
+    "rtl_incdirs": ["include/"],
+
+    "rtl_dependencies": [],
 
     "tb_files": [],
 
